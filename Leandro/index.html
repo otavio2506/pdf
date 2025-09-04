@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Leitor de CSV Filtrado</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+    :root{
+      --red:#ff3b3b;
+      --dark:#0d0d0d;
+      --dark-2:#1a1a1a;
+      --card:#330000;
+    }
+
+    body {
+      font-family: 'Orbitron', sans-serif;
+      background: linear-gradient(145deg, var(--dark), var(--dark-2));
+      color: #f5f5f5;
+      padding: 20px;
+      position: relative;
+      min-height: 100vh;
+    }
+
+    /* Header com logo centralizado */
+    .header {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:20px;
+      flex-direction:column;
+      margin-bottom: 10px;
+    }
+    #logo {
+      height: 84px;
+      display:block;
+    }
+    h2 {
+      color: var(--red);
+      text-align: center;
+      margin: 0;
+      text-shadow: 0 0 10px var(--red);
+    }
+
+    .controls {
+      text-align:center;
+      margin-top:12px;
+    }
+
+    input, button {
+      margin: 5px;
+      padding: 10px 15px;
+      border-radius: 6px;
+      border: none;
+      font-weight: bold;
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    input[type="file"] {
+      background: #1a1a1a;
+      color: #f5f5f5;
+    }
+
+    button {
+      background: var(--red);
+      color: #fff;
+      cursor: pointer;
+      transition: 0.25s;
+    }
+    button:hover{
+      background:#ff1a1a;
+      box-shadow: 0 0 10px var(--red);
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 20px;
+      width: 100%;
+      font-size: 14px;
+      box-shadow: 0 0 10px #ff3b3b50;
+    }
+
+    th, td {
+      border: 1px solid #ff3b3b50;
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background: var(--card);
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    tr:nth-child(even) {
+      background: #1a0000;
+    }
+
+    tr:nth-child(odd) {
+      background: #0d0000;
+    }
+
+    tr:hover {
+      background: #4d0000;
+      transition: 0.2s;
+    }
+
+    #resumo {
+      margin-top: 15px;
+      text-align: right;
+      font-size: 14px;
+      color: #ff6666;
+    }
+
+    /* Contador no canto superior direito */
+    #contadorTotal {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      font-size: 22px;
+      font-weight: bold;
+      color: var(--red);
+      text-shadow: 0 0 10px var(--red);
+      z-index: 1000;
+    }
+  </style>
+
+  <!-- jsPDF + AutoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+  <div class="header">
+    <!-- Coloque o arquivo logo.png na mesma pasta do HTML -->
+    <img id="logo" src="logo.png" alt="Logo (coloque logo.png na mesma pasta)">
+    <h2>Leitor de CSV - Filtro por Assunto</h2>
+    <div class="controls">
+      <input type="file" id="fileInput" accept=".csv">
+      <button id="baixarPDF">Baixar PDF Completo</button>
+      <button id="baixarTotaisPDF">Baixar PDF Totais</button>
+      <button id="resetAcumulado" title="Resetar total acumulado" style="background:#333;color:#fff;margin-left:8px;">Resetar Total</button>
+    </div>
+  </div>
+
+  <div id="contadorTotal">Total: 0</div>
+
+  <table id="tabela"></table>
+  <div id="resumo"></div>
+
+  <script>
+    // --- Variáveis principais
+    let dadosOriginais = [];
+    let dadosFiltrados = [];
+    const camposDesejados = ["id_cto", "id_os", "assunto", "colaborador", "data"];
+    let totalAcumulado = 0;
+
+    // Variável que guardará o DataURL do logo após o preload (usada pelo jsPDF)
+    let logoDataURL = null;
+
+    // Tenta pré-carregar o logo da tag <img id="logo"> e converte para dataURL
+    function preloadLogoToDataURL() {
+      const imgEl = document.getElementById('logo');
+      if (!imgEl) return;
+
+      // Se a imagem já estiver carregada
+      if (imgEl.complete && imgEl.naturalWidth !== 0) {
+        convertImgToDataURL(imgEl);
+      } else {
+        imgEl.addEventListener('load', () => convertImgToDataURL(imgEl));
+        imgEl.addEventListener('error', () => console.warn('Erro ao carregar logo.png — verifique o caminho/nome.'));
+      }
+    }
+
+    function convertImgToDataURL(imgEl) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = imgEl.naturalWidth;
+        canvas.height = imgEl.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imgEl, 0, 0);
+        logoDataURL = canvas.toDataURL('image/png');
+        // console.log("Logo dataURL ready, length:", logoDataURL.length);
+      } catch (err) {
+        console.warn('Não foi possível converter a imagem para DataURL:', err);
+        logoDataURL = null;
+      }
+    }
+
+    // Chama preload
+    preloadLogoToDataURL();
+
+    // --- Leitura do CSV
+    document.getElementById("fileInput").addEventListener("change", function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const texto = e.target.result;
+        processarCSV(texto);
+      };
+
+      reader.readAsText(file, 'UTF-8');
+    });
+
+    function processarCSV(texto) {
+      // Suavizar quebras CRLF/LF e ignorar linhas vazias
+      const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+      // se não houver linhas suficientes, aborta
+      if (linhas.length === 0) {
+        alert('CSV vazio ou inválido.');
+        return;
+      }
+
+      const cabecalho = linhas[0].split(",").map(c => c.trim().toLowerCase());
+      const dados = linhas.slice(1).map(linha => linha.split(",").map(c => c.trim()));
+
+      const indices = camposDesejados.map(campo => cabecalho.indexOf(campo));
+      // se algum índice for -1, avisa (campo não encontrado)
+      const faltantes = [];
+      indices.forEach((idx, i) => { if (idx === -1) faltantes.push(camposDesejados[i]); });
+      if (faltantes.length) {
+        alert('Campos não encontrados no CSV: ' + faltantes.join(', ') + '. Verifique o cabeçalho.');
+        return;
+      }
+
+      dadosOriginais = dados.map(linha => indices.map(i => linha[i]));
+      aplicarFiltro();
+    }
+
+    function aplicarFiltro() {
+      const grupos = {};
+      dadosOriginais.forEach(linha => {
+        const assunto = linha[2] ?? '';
+        if (!grupos[assunto]) grupos[assunto] = [];
+        grupos[assunto].push(linha);
+      });
+
+      const assuntosOrdenados = Object.keys(grupos).sort();
+      dadosFiltrados = assuntosOrdenados.flatMap(assunto => grupos[assunto]);
+
+      montarTabela(camposDesejados, dadosFiltrados);
+
+      // Atualiza resumo por assunto (somente do CSV atual)
+      const resumoDiv = document.getElementById("resumo");
+      let resumoTexto = assuntosOrdenados.map(assunto => `${assunto}: ${grupos[assunto].length}`).join(" | ");
+      resumoDiv.textContent = resumoTexto;
+
+      // Soma total do CSV carregado ao total acumulado
+      const totalCSV = Object.values(grupos).reduce((acc, arr) => acc + arr.length, 0);
+      totalAcumulado += totalCSV;
+
+      // Atualiza contador animado
+      animarContador(totalAcumulado);
+    }
+
+    function montarTabela(cabecalho, dados) {
+      const tabela = document.getElementById("tabela");
+      tabela.innerHTML = "";
+
+      let thead = "<tr>";
+      cabecalho.forEach(c => thead += `<th>${c}</th>`);
+      thead += "</tr>";
+      tabela.innerHTML += thead;
+
+      dados.forEach(linha => {
+        let row = "<tr>";
+        linha.forEach(col => row += `<td>${col ?? ''}</td>`);
+        row += "</tr>";
+        tabela.innerHTML += row;
+      });
+    }
+
+    function animarContador(valorFinal) {
+      const contador = document.getElementById("contadorTotal");
+      let valorAtual = parseInt(contador.textContent.replace(/\D/g, '')) || 0;
+      // evita passo 0
+      const diferenca = valorFinal - valorAtual;
+      if (diferenca === 0) return;
+      const duracaoMs = 700; // duração da animação
+      const frames = 45;
+      const passo = diferenca / frames;
+      let frame = 0;
+      const start = performance.now();
+
+      function step(now) {
+        const progress = Math.min(1, (now - start) / duracaoMs);
+        const eased = Math.round(valorAtual + diferenca * progress);
+        contador.textContent = `Total: ${eased}`;
+        frame++;
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        } else {
+          contador.textContent = `Total: ${valorFinal}`;
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    // Botão para reset do total acumulado
+    document.getElementById('resetAcumulado').addEventListener('click', () => {
+      if (!confirm('Resetar total acumulado para zero?')) return;
+      totalAcumulado = 0;
+      animarContador(0);
+    });
+
+    // --- Funções de PDF (com inserção do logo se disponível)
+    function addLogoToDocIfAvailable(doc, x = 14, y = 10, w = 36, h = 36) {
+      try {
+        if (logoDataURL) {
+          doc.addImage(logoDataURL, 'PNG', x, y, w, h);
+          return true;
+        }
+      } catch (err) {
+        console.warn('Não foi possível adicionar o logo ao PDF:', err);
+      }
+      return false;
+    }
+
+    // PDF Completo
+    document.getElementById("baixarPDF").addEventListener("click", () => {
+      if (dadosFiltrados.length === 0) {
+        alert("Nenhum dado para exportar!");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      // Adiciona logo (se disponível) e ajusta título para não sobrepor
+      const logoAdded = addLogoToDocIfAvailable(doc, 14, 8, 36, 36);
+      const titleY = logoAdded ? 20 + 20 : 20;
+      doc.setFontSize(16);
+      doc.text("", 14, titleY);
+
+      const bodyData = dadosFiltrados.map(linha => linha);
+
+      doc.autoTable({
+        head: [camposDesejados],
+        body: bodyData,
+        startY: titleY + 12,
+        theme: 'grid',
+        headStyles: { fillColor: [220, 220, 220], textColor: 0 },
+        styles: { fillColor: [255, 255, 255], textColor: 0, lineColor: [150, 150, 150] },
+        alternateRowStyles: { fillColor: [245, 245, 245] }
+      });
+
+      const grupos = {};
+      dadosFiltrados.forEach(linha => {
+        const assunto = linha[2];
+        if (!grupos[assunto]) grupos[assunto] = 0;
+        grupos[assunto]++;
+      });
+
+      const resumoTexto = Object.keys(grupos).sort().map(a => `${a}: ${grupos[a]}`).join(" | ");
+
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      doc.setFontSize(10);
+      doc.text(resumoTexto, pageWidth - 14, pageHeight - 10, { align: 'right' });
+
+      doc.save("relatorio_completo.csv.pdf");
+    });
+
+    // PDF Totais em Tabela com Total Geral destacado
+    document.getElementById("baixarTotaisPDF").addEventListener("click", () => {
+      if (dadosFiltrados.length === 0) {
+        alert("Nenhum dado para gerar o PDF!");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      // Adiciona logo (se disponível)
+      const logoAdded = addLogoToDocIfAvailable(doc, 14, 8, 36, 36);
+      const titleY = logoAdded ? 20 + 20 : 20;
+      doc.setFontSize(16);
+      doc.setTextColor(255, 59, 59);
+      doc.text("", 14, titleY);
+
+      const grupos = {};
+      dadosFiltrados.forEach(linha => {
+        const assunto = linha[2];
+        if (!grupos[assunto]) grupos[assunto] = 0;
+        grupos[assunto]++;
+      });
+
+      let bodyData = Object.keys(grupos).sort().map(assunto => [assunto, grupos[assunto]]);
+
+      // Adiciona Total Geral
+      const totalGeral = Object.values(grupos).reduce((acc, val) => acc + val, 0);
+      bodyData.push(['Total Geral', totalGeral]);
+
+      doc.autoTable({
+        head: [['Assunto', 'Total de Caixas']],
+        body: bodyData,
+        startY: titleY + 12,
+        theme: 'grid',
+        headStyles: { fillColor: [255, 59, 59], textColor: 255, fontStyle: 'bold' },
+        styles: { fillColor: [30, 30, 30], textColor: 255 },
+        alternateRowStyles: { fillColor: [50, 0, 0] },
+        tableLineColor: [255, 59, 59],
+        tableLineWidth: 0.5,
+        didParseCell: function (data) {
+          // Destacar a linha Total Geral
+          if (data.row.index === bodyData.length - 1) {
+            data.cell.styles.fillColor = [255, 0, 0]; // vermelho forte
+            data.cell.styles.textColor = 255; // texto branco
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      });
+
+      doc.save("totais_tabela.csv.pdf");
+    });
+
+    // Se quiser garantir que a imagem esteja convertida após carregar
+    // (ex.: caso o usuário substitua a #logo depois de carregar a página),
+    // você pode chamar preloadLogoToDataURL() manualmente.
+  </script>
+</body>
+</html>
