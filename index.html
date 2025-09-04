@@ -2,7 +2,7 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>Leitor de CSV Filtrado</title>
+  <title>Caixas Batidas</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
@@ -22,7 +22,6 @@
       min-height: 100vh;
     }
 
-    /* Header com logo centralizado */
     .header {
       display:flex;
       align-items:center;
@@ -112,7 +111,6 @@
       color: #ff6666;
     }
 
-    /* Contador no canto superior direito */
     #contadorTotal {
       position: fixed;
       top: 20px;
@@ -133,7 +131,7 @@
   <div class="header">
     <!-- Coloque o arquivo logo.png na mesma pasta do HTML -->
     <img id="logo" src="logo.png" alt="Logo (coloque logo.png na mesma pasta)">
-    <h2>Leitor de CSV - Filtro por Assunto</h2>
+    <h2>Caixas Batidas</h2>
     <div class="controls">
       <input type="file" id="fileInput" accept=".csv">
       <button id="baixarPDF">Baixar PDF Completo</button>
@@ -154,18 +152,14 @@
     const camposDesejados = ["id_cto", "id_os", "assunto", "colaborador", "data"];
     let totalAcumulado = 0;
 
-    // Variável que guardará o DataURL do logo após o preload (usada pelo jsPDF)
+    // Para inserir logo no PDF
     let logoDataURL = null;
 
-    // Tenta pré-carregar o logo da tag <img id="logo"> e converte para dataURL
     function preloadLogoToDataURL() {
       const imgEl = document.getElementById('logo');
       if (!imgEl) return;
-
-      // Se a imagem já estiver carregada
-      if (imgEl.complete && imgEl.naturalWidth !== 0) {
-        convertImgToDataURL(imgEl);
-      } else {
+      if (imgEl.complete && imgEl.naturalWidth !== 0) convertImgToDataURL(imgEl);
+      else {
         imgEl.addEventListener('load', () => convertImgToDataURL(imgEl));
         imgEl.addEventListener('error', () => console.warn('Erro ao carregar logo.png — verifique o caminho/nome.'));
       }
@@ -179,14 +173,12 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(imgEl, 0, 0);
         logoDataURL = canvas.toDataURL('image/png');
-        // console.log("Logo dataURL ready, length:", logoDataURL.length);
       } catch (err) {
         console.warn('Não foi possível converter a imagem para DataURL:', err);
         logoDataURL = null;
       }
     }
 
-    // Chama preload
     preloadLogoToDataURL();
 
     // --- Leitura do CSV
@@ -206,7 +198,6 @@
     function processarCSV(texto) {
       // Suavizar quebras CRLF/LF e ignorar linhas vazias
       const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-      // se não houver linhas suficientes, aborta
       if (linhas.length === 0) {
         alert('CSV vazio ou inválido.');
         return;
@@ -216,7 +207,6 @@
       const dados = linhas.slice(1).map(linha => linha.split(",").map(c => c.trim()));
 
       const indices = camposDesejados.map(campo => cabecalho.indexOf(campo));
-      // se algum índice for -1, avisa (campo não encontrado)
       const faltantes = [];
       indices.forEach((idx, i) => { if (idx === -1) faltantes.push(camposDesejados[i]); });
       if (faltantes.length) {
@@ -278,16 +268,11 @@
       const diferenca = valorFinal - valorAtual;
       if (diferenca === 0) return;
       const duracaoMs = 700; // duração da animação
-      const frames = 45;
-      const passo = diferenca / frames;
-      let frame = 0;
       const start = performance.now();
 
       function step(now) {
         const progress = Math.min(1, (now - start) / duracaoMs);
-        const eased = Math.round(valorAtual + diferenca * progress);
-        contador.textContent = `Total: ${eased}`;
-        frame++;
+        contador.textContent = `Total: ${Math.round(valorAtual + diferenca * progress)}`;
         if (progress < 1) {
           requestAnimationFrame(step);
         } else {
@@ -297,27 +282,60 @@
       requestAnimationFrame(step);
     }
 
-    // Botão para reset do total acumulado
     document.getElementById('resetAcumulado').addEventListener('click', () => {
       if (!confirm('Resetar total acumulado para zero?')) return;
       totalAcumulado = 0;
       animarContador(0);
     });
 
-    // --- Funções de PDF (com inserção do logo se disponível)
-    function addLogoToDocIfAvailable(doc, x = 14, y = 10, w = 36, h = 36) {
+    // adiciona logo se disponível
+    function addLogoToDocIfAvailable(doc, x = 14, y = 14, w = 36, h = 36) {
       try {
         if (logoDataURL) {
           doc.addImage(logoDataURL, 'PNG', x, y, w, h);
-          return true;
+          return { added: true, x, y, w, h };
         }
       } catch (err) {
         console.warn('Não foi possível adicionar o logo ao PDF:', err);
       }
-      return false;
+      return { added: false, x, y, w, h };
     }
 
-    // PDF Completo
+    // tenta formatar várias entradas de data (ISO, "YYYY-MM-DD HH:MM:SS", "DD/MM/YYYY")
+    function formatarDataBR(dataStr) {
+      if (!dataStr) return '';
+      const s = String(dataStr).trim();
+      // se tem 'T' (ISO)
+      if (s.includes('T')) {
+        const datePart = s.split('T')[0];
+        const p = datePart.split('-');
+        if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+      }
+      // se tem espaço "YYYY-MM-DD HH:MM:SS"
+      if (s.includes(' ')) {
+        const datePart = s.split(' ')[0];
+        const p = datePart.split('-');
+        if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+      }
+      // se já está com barras (assume formato BR ou MDY)
+      if (s.includes('/')) {
+        const p = s.split('/'); // dd/mm/yyyy ou yyyy/mm/dd
+        if (p.length === 3) {
+          if (p[0].length === 4) return `${p[2]}/${p[1]}/${p[0]}`; // yyyy/mm/dd => dd/mm/yyyy
+          return `${p[0]}/${p[1]}/${p[2]}`; // assume já dd/mm/yyyy
+        }
+      }
+      // fallback: tentar extrair trecho de 4 dígitos de ano
+      const match = s.match(/(\d{4})/);
+      if (match) {
+        // tenta extrair yyyy-mm-dd com regex
+        const m2 = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (m2) return `${m2[3]}/${m2[2]}/${m2[1]}`;
+      }
+      return s;
+    }
+
+    // --- PDF Completo
     document.getElementById("baixarPDF").addEventListener("click", () => {
       if (dadosFiltrados.length === 0) {
         alert("Nenhum dado para exportar!");
@@ -327,31 +345,58 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
-      // Adiciona logo (se disponível) e ajusta título para não sobrepor
-      const logoAdded = addLogoToDocIfAvailable(doc, 14, 8, 36, 36);
-      const titleY = logoAdded ? 20 + 20 : 20;
-      doc.setFontSize(16);
-      doc.text("", 14, titleY);
+      // configura cabeçalho (logo + infos)
+      const logoInfo = addLogoToDocIfAvailable(doc, 14, 14, 36, 36);
+      const logoY = logoInfo.y;
+      const logoH = logoInfo.h;
 
+      // calcular posição vertical do bloco de texto para centralizar ao lado do logo
+      const linesInfo = [
+        "Av Joao Correa, 1365 - Centro - Sapiranga/RS",
+        "CEP: 93800-000   Tel: (51) 3039-2203",
+        "E-mail: giga30392203@gmail.com"
+      ];
+      const lineHeight = 6; // pt
+      const blockHeight = linesInfo.length * lineHeight;
+      const textStartY = logoY + (logoH / 2) - (blockHeight / 2) + 4; // +4 para ajuste visual
+      const textX = 14 + 36 + 10; // logoX + logoW + gap
+
+      doc.setFontSize(10);
+      doc.setTextColor(20);
+      linesInfo.forEach((l, i) => doc.text(l, textX, textStartY + i * lineHeight));
+
+      // pega data do primeiro item do CSV e formata (sem hora)
+      let dataPrimeiroItem = '';
+      if (dadosFiltrados.length > 0) {
+        const campoData = dadosFiltrados[0][4]; // posição 'data'
+        dataPrimeiroItem = formatarDataBR(campoData);
+      }
+
+      // título/descrição centralizado abaixo do cabeçalho
+      const headerBottomY = logoY + logoH + 8;
+      doc.setFontSize(12);
+      doc.setTextColor(80);
+      doc.text(`Relatório gerado a partir do CSV - ${dataPrimeiroItem}`, doc.internal.pageSize.getWidth() / 2, headerBottomY, { align: 'center' });
+
+      // tabela (começa abaixo do cabeçalho)
       const bodyData = dadosFiltrados.map(linha => linha);
-
       doc.autoTable({
         head: [camposDesejados],
         body: bodyData,
-        startY: titleY + 12,
+        startY: headerBottomY + 8,
         theme: 'grid',
         headStyles: { fillColor: [220, 220, 220], textColor: 0 },
         styles: { fillColor: [255, 255, 255], textColor: 0, lineColor: [150, 150, 150] },
         alternateRowStyles: { fillColor: [245, 245, 245] }
       });
 
+      // resumo ao final da página
       const grupos = {};
       dadosFiltrados.forEach(linha => {
         const assunto = linha[2];
         if (!grupos[assunto]) grupos[assunto] = 0;
         grupos[assunto]++;
       });
-
       const resumoTexto = Object.keys(grupos).sort().map(a => `${a}: ${grupos[a]}`).join(" | ");
 
       const pageHeight = doc.internal.pageSize.getHeight();
@@ -362,7 +407,7 @@
       doc.save("relatorio_completo.csv.pdf");
     });
 
-    // PDF Totais em Tabela com Total Geral destacado
+    // --- PDF Totais
     document.getElementById("baixarTotaisPDF").addEventListener("click", () => {
       if (dadosFiltrados.length === 0) {
         alert("Nenhum dado para gerar o PDF!");
@@ -372,12 +417,35 @@
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
-      // Adiciona logo (se disponível)
-      const logoAdded = addLogoToDocIfAvailable(doc, 14, 8, 36, 36);
-      const titleY = logoAdded ? 20 + 20 : 20;
-      doc.setFontSize(16);
-      doc.setTextColor(255, 59, 59);
-      doc.text("", 14, titleY);
+      const logoInfo = addLogoToDocIfAvailable(doc, 14, 14, 36, 36);
+      const logoY = logoInfo.y;
+      const logoH = logoInfo.h;
+
+      const linesInfo = [
+        "Av Joao Correa, 1365 - Centro - Sapiranga/RS",
+        "CEP: 93800-000   Tel: (51) 3039-2203",
+        "E-mail: giga30392203@gmail.com"
+      ];
+      const lineHeight = 6;
+      const blockHeight = linesInfo.length * lineHeight;
+      const textStartY = logoY + (logoH / 2) - (blockHeight / 2) + 4;
+      const textX = 14 + 36 + 10;
+
+      doc.setFontSize(10);
+      doc.setTextColor(20);
+      linesInfo.forEach((l, i) => doc.text(l, textX, textStartY + i * lineHeight));
+
+      // pega data do primeiro item do CSV e formata
+      let dataPrimeiroItem = '';
+      if (dadosFiltrados.length > 0) {
+        const campoData = dadosFiltrados[0][4];
+        dataPrimeiroItem = formatarDataBR(campoData);
+      }
+
+      const headerBottomY = logoY + logoH + 8;
+      doc.setFontSize(12);
+      doc.setTextColor(80);
+      doc.text(`Resumo dos totais de caixas batidas em ${dataPrimeiroItem}`, doc.internal.pageSize.getWidth() / 2, headerBottomY, { align: 'center' });
 
       const grupos = {};
       dadosFiltrados.forEach(linha => {
@@ -387,15 +455,13 @@
       });
 
       let bodyData = Object.keys(grupos).sort().map(assunto => [assunto, grupos[assunto]]);
-
-      // Adiciona Total Geral
       const totalGeral = Object.values(grupos).reduce((acc, val) => acc + val, 0);
       bodyData.push(['Total Geral', totalGeral]);
 
       doc.autoTable({
         head: [['Assunto', 'Total de Caixas']],
         body: bodyData,
-        startY: titleY + 12,
+        startY: headerBottomY + 8,
         theme: 'grid',
         headStyles: { fillColor: [255, 59, 59], textColor: 255, fontStyle: 'bold' },
         styles: { fillColor: [30, 30, 30], textColor: 255 },
@@ -403,10 +469,9 @@
         tableLineColor: [255, 59, 59],
         tableLineWidth: 0.5,
         didParseCell: function (data) {
-          // Destacar a linha Total Geral
           if (data.row.index === bodyData.length - 1) {
-            data.cell.styles.fillColor = [255, 0, 0]; // vermelho forte
-            data.cell.styles.textColor = 255; // texto branco
+            data.cell.styles.fillColor = [255, 0, 0];
+            data.cell.styles.textColor = 255;
             data.cell.styles.fontStyle = 'bold';
           }
         }
@@ -414,10 +479,6 @@
 
       doc.save("totais_tabela.csv.pdf");
     });
-
-    // Se quiser garantir que a imagem esteja convertida após carregar
-    // (ex.: caso o usuário substitua a #logo depois de carregar a página),
-    // você pode chamar preloadLogoToDataURL() manualmente.
   </script>
 </body>
 </html>
