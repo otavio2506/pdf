@@ -445,7 +445,7 @@
       const headerBottomY = logoY + logoH + 8;
       doc.setFontSize(12);
       doc.setTextColor(80);
-      doc.text(`Resumo dos totais de caixas batidas em ${dataPrimeiroItem}`, doc.internal.pageSize.getWidth() / 2, headerBottomY, { align: 'center' });
+      doc.text(`Resumo total de caixas batidas em ${dataPrimeiroItem}`, doc.internal.pageSize.getWidth() / 2, headerBottomY, { align: 'center' });
 
       const grupos = {};
       dadosFiltrados.forEach(linha => {
@@ -482,3 +482,4 @@
   </script>
 </body>
 </html>
+
