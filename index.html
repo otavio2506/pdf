@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<title>Resumo Caixas Batidas - WhatsApp</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(145deg, #0d0d0d, #1a0000);
+    color: #f5f5f5;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Background do logo do Internacional repetido */
+  body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url('inter-logo.png') repeat;
+    background-size: 100px 100px;
+    opacity: 0.05;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .header, #textoWhatsApp, input, button {
+    position: relative;
+    z-index: 1;
+  }
+
+  .header { text-align:center; margin-bottom:20px; }
+  .header h2 {
+    color: #ff3b3b;
+    text-shadow: 0 0 10px #ff1a1a;
+  }
+
+  input[type="file"] {
+    padding: 10px 15px;
+    border-radius: 6px;
+    border: none;
+    background:#1a0000;
+    color:#fff;
+    font-weight:bold;
+    cursor:pointer;
+    margin:5px 0;
+  }
+
+  button {
+    margin-top:10px;
+    padding:10px 15px;
+    border:none;
+    border-radius:6px;
+    background:#ff3b3b;
+    color:#fff;
+    font-weight:bold;
+    cursor:pointer;
+    transition:0.25s;
+    margin-right:5px;
+  }
+
+  button:hover { background:#ff1a1a; }
+
+  #textoWhatsApp {
+    width:100%;
+    height:300px;
+    padding:10px;
+    margin-top:10px;
+    border-radius:6px;
+    background:#1a0000;
+    color:#fff;
+    font-family: Arial, sans-serif;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h2>Resumo Caixas Batidas</h2>
+  <input type="file" id="fileInput" accept=".csv"><br>
+  <button id="copiarTexto">Copiar Texto</button>
+  <button id="enviarWhatsApp">Abrir WhatsApp Web</button>
+  <button id="resetTotalMes" title="Resetar total do mês" style="background:#333;color:#fff;margin-left:8px;">Resetar Total do Mês</button>
+</div>
+
+<textarea id="textoWhatsApp" readonly placeholder="O resumo aparecerá aqui..."></textarea>
+
+<script>
+  const camposDesejados = ["id_cto","assunto","data"];
+  const numeroWhatsAppFixo = "5551999821022";
+
+  // total do mês persistente
+  let totalMes = parseInt(localStorage.getItem('totalMes') || '0');
+
+  document.getElementById("fileInput").addEventListener("change", function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = e => processarCSV(e.target.result);
+    reader.readAsText(file, 'UTF-8');
+  });
+
+  function processarCSV(texto) {
+    const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    if (linhas.length < 2) { alert('CSV vazio ou sem dados.'); return; }
+
+    const cabecalho = linhas[0].split(",").map(c => c.trim().toLowerCase());
+    const dados = linhas.slice(1).map(linha => linha.split(",").map(c => c.trim()));
+    const indices = camposDesejados.map(c => cabecalho.indexOf(c));
+    const faltantes = indices.map((idx,i)=> idx===-1 ? camposDesejados[i]:null).filter(Boolean);
+    if(faltantes.length){ alert("Campos ausentes: " + faltantes.join(", ")); return; }
+
+    const dadosValidos = dados
+      .map(l => indices.map(i => l[i]))
+      .filter(l => l[0] && /^\d+$/.test(l[0]) && l[1] && l[2]);
+
+    if(dadosValidos.length === 0){ alert("Nenhuma linha válida encontrada."); return; }
+
+    const dataPrimeiro = formatarDataBR(dadosValidos[0][2]);
+
+    const contadorAssuntos = {};
+    let totalArquivo = 0; 
+    dadosValidos.forEach(l => {
+      const assunto = l[1];
+      contadorAssuntos[assunto] = (contadorAssuntos[assunto] || 0) + 1;
+      totalArquivo++;
+    });
+
+    totalMes += totalArquivo; // acumula no mês
+    localStorage.setItem('totalMes', totalMes); // grava no localStorage
+
+    let textoResumo = `*DATA:* ${dataPrimeiro}\n`;
+    Object.keys(contadorAssuntos).sort().forEach(assunto => {
+      const qtd = contadorAssuntos[assunto];
+      textoResumo += `: *${assunto}* : ${qtd}\n`;
+    });
+    textoResumo += `\n*TOTAL CTOS BATIDAS:* ${totalArquivo}`;
+    textoResumo += `\n*TOTAL DO MÊS:* ${totalMes}`;
+
+    document.getElementById("textoWhatsApp").value = textoResumo;
+  }
+
+  function formatarDataBR(dataStr) {
+    if(!dataStr) return '';
+    const s = String(dataStr).trim();
+    if(s.includes('T')) return s.split('T')[0].split(':').reverse().join('/');
+    if(s.includes(' ')) return s.split(' ')[0].split(':').reverse().join('/');
+    if(s.includes('/')) return s;
+    return s;
+  }
+
+  document.getElementById("copiarTexto").addEventListener("click", () => {
+    const texto = document.getElementById("textoWhatsApp").value;
+    if (!texto) return alert("Não há texto para copiar!");
+    navigator.clipboard.writeText(texto).then(() => {
+      alert("Texto copiado para a área de transferência!");
+    }).catch(err => {
+      alert("Erro ao copiar: " + err);
+    });
+  });
+
+  document.getElementById("enviarWhatsApp").addEventListener("click", () => {
+    const texto = document.getElementById("textoWhatsApp").value;
+    if (!texto) return alert("Não há texto para enviar!");
+
+    const textoCodificado = encodeURIComponent(texto);
+    const url = `https://wa.me/${numeroWhatsAppFixo}?text=${textoCodificado}`;
+    window.open(url, '_blank');
+  });
+
+  document.getElementById('resetTotalMes').addEventListener('click', () => {
+    if(!confirm('Deseja resetar o total do mês?')) return;
+    totalMes = 0;
+    localStorage.setItem('totalMes', totalMes);
+    document.getElementById("textoWhatsApp").value = "*TOTAL DO MÊS:* 0";
+  });
+</script>
+
+</body>
+</html>
