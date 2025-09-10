@@ -13,7 +13,6 @@
     overflow: hidden;
   }
 
-  /* Background do logo do Internacional repetido */
   body::before {
     content: "";
     position: absolute;
@@ -94,7 +93,6 @@
   const camposDesejados = ["id_cto","assunto","data"];
   const numeroWhatsAppFixo = "5551999821022";
 
-  // total do mês persistente
   let totalMes = parseInt(localStorage.getItem('totalMes') || '0');
 
   document.getElementById("fileInput").addEventListener("change", function(event) {
@@ -132,8 +130,8 @@
       totalArquivo++;
     });
 
-    totalMes += totalArquivo; // acumula no mês
-    localStorage.setItem('totalMes', totalMes); // grava no localStorage
+    totalMes += totalArquivo; 
+    localStorage.setItem('totalMes', totalMes);
 
     let textoResumo = `*DATA:* ${dataPrimeiro}\n`;
     Object.keys(contadorAssuntos).sort().forEach(assunto => {
@@ -146,13 +144,19 @@
     document.getElementById("textoWhatsApp").value = textoResumo;
   }
 
+  // 🔹 Corrigida: sempre retorna no formato DD/MM/AAAA
   function formatarDataBR(dataStr) {
     if(!dataStr) return '';
-    const s = String(dataStr).trim();
-    if(s.includes('T')) return s.split('T')[0].split(':').reverse().join('/');
-    if(s.includes(' ')) return s.split(' ')[0].split(':').reverse().join('/');
-    if(s.includes('/')) return s;
-    return s;
+    try {
+      let d = new Date(dataStr);
+      if (isNaN(d)) return dataStr; 
+      let dia = String(d.getDate()).padStart(2,'0');
+      let mes = String(d.getMonth()+1).padStart(2,'0');
+      let ano = d.getFullYear();
+      return `${dia}/${mes}/${ano}`;
+    } catch {
+      return dataStr;
+    }
   }
 
   document.getElementById("copiarTexto").addEventListener("click", () => {
@@ -168,7 +172,6 @@
   document.getElementById("enviarWhatsApp").addEventListener("click", () => {
     const texto = document.getElementById("textoWhatsApp").value;
     if (!texto) return alert("Não há texto para enviar!");
-
     const textoCodificado = encodeURIComponent(texto);
     const url = `https://wa.me/${numeroWhatsAppFixo}?text=${textoCodificado}`;
     window.open(url, '_blank');
